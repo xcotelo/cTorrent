@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -6,13 +7,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include "../include/datos.h"
+#include "../include/network.h"
+#include "../include/protocol.h"
 
 int main(){
     struct sockaddr_in server_addr;
-    char mensaxe[500];
+    char mensaxePuro[BUFFER];
     int sockfd;
-
+    
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sockfd < 0) {
@@ -33,22 +35,41 @@ int main(){
 
     while(1){
         printf("Enter you message: ");
-        fgets(mensaxe, sizeof(mensaxe), stdin);
+        fgets(mensaxePuro, sizeof(mensaxePuro), stdin);
+        size_t len = strlen(mensaxePuro);
 
-        size_t len = strlen(mensaxe);
         // Eliminar salto de liña final
-        if (len > 0 && mensaxe[len-1] == '\n') {
+        if (len > 0 && mensaxePuro[len-1] == '\n') {
+            mensaxePuro[len-1] = '\0';
             len--;
         }
 
-        if (len == 0) continue;
-
-        BYTE mensaxeByte[len];
-        for (size_t i = 0; i < len; ++i){
-            mensaxeByte[i] = (BYTE)mensaxe[i];
+        // Enviar payload en bytes
+        message* mensaxe = create_message(MSG_TYPE_TEXT, (const BYTE*)mensaxePuro, (uint32_t)len);
+        if (!mensaxe) {
+            fprintf(stderr, "Error creating message\n");
+            break;
         }
+        if (send_message(sockfd, mensaxe) != 0) {
+            fprintf(stderr, "Error sending message\n");
+            free_message(mensaxe);
+            break;
+        }
+        free_message(mensaxe);
 
-        ssize_t sent = write(sockfd, mensaxeByte, len);
+        // Confirmacion (ACK)
+        message* resposta = receive_message(sockfd);
+        if (!resposta) {
+            fprintf(stderr, "Server closed connection or error\n");
+            break;
+        }
+        if (resposta->type == MSG_TYPE_ACK) {
+            printf("ACK recibido: %s\n", (char*)resposta->payload);
+        } else {
+            printf("Resposta recibida (tipo 0x%02X):\n", resposta->type);
+            print_message(resposta);
+        }
+        free_message(resposta);
     }
 
     close(sockfd);

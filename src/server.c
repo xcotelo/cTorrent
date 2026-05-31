@@ -8,40 +8,49 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../include/datos.h"
-
-typedef struct {
-    int ID;
-    int socket;
-} datosCliente;
+#include "../include/network.h"
+#include "../include/protocol.h"
 
 void* procesarCliente(void *clienteSenProcesar){
     datosCliente* cliente = (datosCliente*) clienteSenProcesar;
     // Paso os datos a local para liberar a estrutura
     int sock = cliente->socket, id = cliente->ID;
-    int bytesRecibidos;
-    BYTE buffer [BUFFER];
-
     free(cliente);
 
     while(1){
-        // Inicializo o buffer
-        memset(buffer, 0, BUFFER);
-        bytesRecibidos = recv(sock, buffer, BUFFER, 0);
-
-        if (bytesRecibidos <= 0) {
-            printf("\n- [Cliente %d] Desconectado\n", id);
+        message* mensaxeCliente = receive_message(sock);
+        if (!mensaxeCliente){
+            printf("[Cliente %d] Desconectado\n", id);
             break;
         }
 
-        // Imprimo exactamente os bytes recibidos sen depender de '\0'
-        printf("+ [Cliente %d] Di: ", id);
+        printf("\n[Cliente %d] Mensaje recibido:\n", id);
+        print_message(mensaxeCliente);
 
-        fwrite(buffer, 1, (size_t)bytesRecibidos, stdout);
-        putchar('\n');
-        
-        // Envio o mensaxe de volta
-        ssize_t sent = send(sock, buffer, (size_t)bytesRecibidos, 0);
+        switch(mensaxeCliente->type){
+            case MSG_TYPE_TEXT:
+                printf("  Texto: %s\n", (char*)mensaxeCliente->payload);
+                
+                // Enviar ACK
+                message* ack = create_message(MSG_TYPE_ACK, (const BYTE*)"OK", 2);
+                send_message(sock, ack);
+                free_message(ack);
+                break;
+                
+            case MSG_TYPE_CMD:
+                printf("  Comando: %s\n", (char*)mensaxeCliente->payload);
+                // Procesar comando...
+                break;
+                
+            case MSG_TYPE_FILE:
+                printf("  Datos de archivo: %u bytes\n", mensaxeCliente->length);
+                // Gardar archivo...
+                break;
+                
+            default:
+                printf("  Tipo desconocido\n");
+        }
+        free_message(mensaxeCliente);
     }
     
     close(sock);
