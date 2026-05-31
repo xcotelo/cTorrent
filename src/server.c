@@ -8,9 +8,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define BUFFER 1024
-#define PORT 1337
+#include "../include/datos.h"
 
 typedef struct {
     int ID;
@@ -20,17 +18,15 @@ typedef struct {
 void* procesarCliente(void *clienteSenProcesar){
     datosCliente* cliente = (datosCliente*) clienteSenProcesar;
     // Paso os datos a local para liberar a estrutura
-    int sock = cliente->socket;
-    int id = cliente->ID;
-    char buffer [BUFFER];
+    int sock = cliente->socket, id = cliente->ID;
     int bytesRecibidos;
+    BYTE buffer [BUFFER];
 
     free(cliente);
 
     while(1){
         // Inicializo o buffer
         memset(buffer, 0, BUFFER);
-        // Gardo os datos recibidos
         bytesRecibidos = recv(sock, buffer, BUFFER, 0);
 
         if (bytesRecibidos <= 0) {
@@ -38,10 +34,14 @@ void* procesarCliente(void *clienteSenProcesar){
             break;
         }
 
-        printf("+ [Cliente %d] Di: %s", id, buffer);
+        // Imprimo exactamente os bytes recibidos sen depender de '\0'
+        printf("+ [Cliente %d] Di: ", id);
+
+        fwrite(buffer, 1, (size_t)bytesRecibidos, stdout);
+        putchar('\n');
         
         // Envio o mensaxe de volta
-        send(sock, buffer, strlen(buffer), 0);
+        ssize_t sent = send(sock, buffer, (size_t)bytesRecibidos, 0);
     }
     
     close(sock);
@@ -60,6 +60,7 @@ int main() {
         return 1;
     }
 
+    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     server_addr.sin_port = htons(PORT);
@@ -89,7 +90,12 @@ int main() {
         novoCliente->ID = contadorClientes;
         novoCliente->socket = socketCliente;
 
-        fio = pthread_create(&fio, NULL, procesarCliente, novoCliente);
+        if (pthread_create(&fio, NULL, procesarCliente, novoCliente) != 0) {
+            perror("Error creating thread");
+            close(socketCliente);
+            free(novoCliente);
+            continue;
+        }
         // Sen esperar ao fio, que se vacie só
         pthread_detach(fio);
     }
