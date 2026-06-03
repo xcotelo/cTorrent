@@ -18,8 +18,7 @@
 
 // TYPE
 #define MSG_TYPE_TEXT    0x01
-#define MSG_TYPE_CMD     0x02
-#define MSG_TYPE_FILE    0x03
+#define MSG_TYPE_MG_LK   0x02
 #define MSG_TYPE_ACK     0x04
 #define MSG_TYPE_ERROR   0xFF
 

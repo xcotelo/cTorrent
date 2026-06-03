@@ -11,6 +11,12 @@
 #include "../include/network.h"
 #include "../include/protocol.h"
 
+void sendACK(int sock){
+    message* ack = create_message(MSG_TYPE_ACK, (const BYTE*)"OK", 2);
+    send_message(sock, ack);
+    free_message(ack);
+}
+
 void* procesarCliente(void *clienteSenProcesar){
     datosCliente* cliente = (datosCliente*) clienteSenProcesar;
     // Paso os datos a local para liberar a estrutura
@@ -30,23 +36,14 @@ void* procesarCliente(void *clienteSenProcesar){
         switch(mensaxeCliente->type){
             case MSG_TYPE_TEXT:
                 printf("  Texto: %s\n", (char*)mensaxeCliente->payload);
-                
-                // Enviar ACK
-                message* ack = create_message(MSG_TYPE_ACK, (const BYTE*)"OK", 2);
-                send_message(sock, ack);
-                free_message(ack);
+                sendACK(sock);
                 break;
                 
-            case MSG_TYPE_CMD:
-                printf("  Comando: %s\n", (char*)mensaxeCliente->payload);
-                // Procesar comando...
+            case MSG_TYPE_MG_LK:
+                printf("  MAGNET LINK: %s\n", (char*)mensaxeCliente->payload);
+                sendACK(sock);
                 break;
-                
-            case MSG_TYPE_FILE:
-                printf("  Datos de archivo: %u bytes\n", mensaxeCliente->length);
-                // Gardar archivo...
-                break;
-                
+
             default:
                 printf("  Tipo desconocido\n");
         }

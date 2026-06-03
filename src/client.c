@@ -10,6 +10,56 @@
 #include "../include/network.h"
 #include "../include/protocol.h"
 
+int is_mg_ln(char* mensaxePuro){
+    return (strncmp(mensaxePuro, "magnet:?xt=urn:", 15) == 0);
+}
+
+void parse_magnet(int sockfd, char* mensaxePuro){
+    char hash[50];
+    char *btih = strstr(mensaxePuro, "btih:");
+        
+    if (btih){
+        btih += 5;
+        strncpy(hash, btih, 40);
+        printf("INFO HASH: %s\n", hash);
+        message* mensaxeMagnet= create_message(MSG_TYPE_MG_LK, (const BYTE*)mensaxePuro, (uint32_t)strlen(mensaxePuro));
+        if (!mensaxeMagnet) {
+            fprintf(stderr, "Error creating message\n");
+        }
+        if (send_message(sockfd, mensaxeMagnet) != 0) {
+            fprintf(stderr, "Error sending message\n");
+            free_message(mensaxeMagnet);
+        }
+        free_message(mensaxeMagnet);
+    }
+}
+
+void parse_text(int sockfd, char *mensaxePuro){
+    message* mensaxe = create_message(MSG_TYPE_TEXT, (const BYTE*)mensaxePuro, (uint32_t)strlen(mensaxePuro));
+    if (!mensaxe) {
+        fprintf(stderr, "Error creating message\n");
+    }
+    if (send_message(sockfd, mensaxe) != 0) {
+        fprintf(stderr, "Error sending message\n");
+        free_message(mensaxe);
+    }
+    free_message(mensaxe);
+}
+
+void confirmationACK(int sockfd){
+    message* resposta = receive_message(sockfd);
+    if (!resposta) {
+        fprintf(stderr, "Server closed connection or error\n");
+    }
+    if (resposta->type == MSG_TYPE_ACK) {
+        printf("ACK recibido: %s\n\n", (char*)resposta->payload);
+    } else {
+        printf("Resposta recibida (tipo 0x%02X):\n", resposta->type);
+        print_message(resposta);
+    }
+    free_message(resposta);
+}
+
 int main(){
     struct sockaddr_in server_addr;
     char mensaxePuro[BUFFER];
@@ -44,32 +94,15 @@ int main(){
             len--;
         }
 
-        // Enviar payload en bytes
-        message* mensaxe = create_message(MSG_TYPE_TEXT, (const BYTE*)mensaxePuro, (uint32_t)len);
-        if (!mensaxe) {
-            fprintf(stderr, "Error creating message\n");
-            break;
+        // Se é magnet link ou texto
+        if (is_mg_ln(mensaxePuro)){
+            parse_magnet(sockfd, mensaxePuro); 
+        }else{
+            parse_text(sockfd, mensaxePuro);
         }
-        if (send_message(sockfd, mensaxe) != 0) {
-            fprintf(stderr, "Error sending message\n");
-            free_message(mensaxe);
-            break;
-        }
-        free_message(mensaxe);
 
         // Confirmacion (ACK)
-        message* resposta = receive_message(sockfd);
-        if (!resposta) {
-            fprintf(stderr, "Server closed connection or error\n");
-            break;
-        }
-        if (resposta->type == MSG_TYPE_ACK) {
-            printf("ACK recibido: %s\n", (char*)resposta->payload);
-        } else {
-            printf("Resposta recibida (tipo 0x%02X):\n", resposta->type);
-            print_message(resposta);
-        }
-        free_message(resposta);
+        confirmationACK(sockfd);
     }
 
     close(sockfd);

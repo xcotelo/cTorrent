@@ -39,7 +39,6 @@ int send_message(int sockfd, message* msg){
     memcpy(&header[1], &lonxitudeConexion, 4);
 
     send(sockfd, header, HEADER_SIZE, 0);
-
     // Comprobado con anterioridade se o mensaxe era valido
     send(sockfd, msg->payload, msg->length, 0);
 
@@ -79,13 +78,11 @@ message* receive_message(int sockfd) {
     if (msg->length > 0) {
         msg->payload = (uint8_t*)malloc((size_t)msg->length + 1);  // +1 para '\0' opcional
 
-
         received = recv(sockfd, msg->payload, msg->length, MSG_WAITALL);
         
         // Opcional: añadir terminador para tratar como string
         msg->payload[msg->length] = '\0';
 
-        print_message(msg);
     } else {
         msg->payload = NULL;
     }
@@ -99,8 +96,7 @@ void print_message(message* msg) {
     printf("Tipo: 0x%02X ", msg->type);
     switch(msg->type) {
         case MSG_TYPE_TEXT:   printf("(TEXTO)"); break;
-        case MSG_TYPE_CMD: printf("(COMANDO)"); break;
-        case MSG_TYPE_FILE:   printf("(ARCHIVO)"); break;
+        case MSG_TYPE_MG_LK: printf("(MAGNET LINK)"); break;
         case MSG_TYPE_ACK:    printf("(ACK)"); break;
         default:              printf("(DESCONOCIDO)");
     }
@@ -109,7 +105,7 @@ void print_message(message* msg) {
     
     if (msg->length > 0 && msg->payload) {
         printf("Payload: ");
-        if (msg->type == MSG_TYPE_TEXT || msg->type == MSG_TYPE_CMD) {
+        if (msg->type == MSG_TYPE_TEXT || msg->type == MSG_TYPE_MG_LK) {
             // Mostrar como texto
             printf("%s\n", (char*)msg->payload);
         } else {
