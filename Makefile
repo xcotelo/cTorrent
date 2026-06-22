@@ -1,16 +1,27 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
 
-all: compilation_dir client server
+CFLAGS = -Wall -Wextra -Iinclude
+
+SRC = \
+	src/main.c \
+	src/tracker/tracker.c \
+	src/peer/peer.c \
+	src/protocol/handshake.c \
+	src/protocol/protocol.c \
+	src/torrent/magnet.c \
+	src/peer/generate_peer_id.c
+
+TARGET = compilation/rawtorrent
+
+all: compilation_dir $(TARGET)
 
 compilation_dir:
 	mkdir -p compilation
 
-client: compilation_dir src/client.c include/protocol.c
-	$(CC) $(CFLAGS) -o compilation/client.out src/client.c include/protocol.c
-
-server: compilation_dir src/server.c include/protocol.c
-	$(CC) $(CFLAGS) -o compilation/server.out src/server.c include/protocol.c
+$(TARGET): $(SRC)
+	$(CC) $(CFLAGS) $(SRC) -o $(TARGET)
 
 clean:
-	rm -rf compilation/*
+	rm -rf compilation
+
+.PHONY: all clean compilation_dir

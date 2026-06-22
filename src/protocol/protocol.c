@@ -1,5 +1,5 @@
-#include "protocol.h"
-#include "network.h"
+#include "../../include/protocol.h"
+#include "../../include/network.h"
 
 message* create_message(uint8_t type, const BYTE *payload, uint32_t length){
     message* mensaxe = (message*)malloc(sizeof(message));

@@ -39,4 +39,4 @@ int send_message(int sockfd, message* msg);
 message* receive_message(int sockfd);
 void print_message(message* msg);
 
-#endif // PROTOCOL_H
+#endif 
