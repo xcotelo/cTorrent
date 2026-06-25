@@ -3,6 +3,7 @@
 #include "../include/tracker.h"
 #include "../include/peer.h"
 #include "../include/magnet.h"
+#include "../include/url_decode.h"
 
 int main(int argc, char *argv[])
 {
@@ -18,8 +19,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    generate_peer_id(peer_id);
-    if (parse_magnet( argv[1], info_hash, tracker_url, sizeof(tracker_url)) < 0)
+    generate_peer_id(peer_id);    
+    if (parse_magnet( argv[1], info_hash, tracker_url) < 0)
     {
         fprintf(stderr, "Magnet link inválido\n");
         return 1;
@@ -36,6 +37,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    printf("/nPeers encontrados: %d\n", peer_count);
+
+    for (int i = 0; i < peer_count; i++) {
+        printf("[+] %d -> ", i);
+        print_peer(&peers[i]);
+        printf("\n");
+    }
+    
     int sockfd = connect_to_peer(&peers[0], info_hash, peer_id);
 
     if (sockfd < 0) {

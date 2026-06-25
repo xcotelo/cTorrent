@@ -1,10 +1,11 @@
 #include "../../include/magnet.h"
+#include "../../include/url_decode.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
-int parse_magnet(const char *magnet, uint8_t info_hash[20], char *tracker_url, size_t tracker_url_size) {
+int parse_magnet(const char *magnet, uint8_t info_hash[20], char *tracker_url) {
     if (!magnet || !info_hash)
         return -1;
 
@@ -31,17 +32,22 @@ int parse_magnet(const char *magnet, uint8_t info_hash[20], char *tracker_url, s
 
     if (tracker_url) {
         const char *tr = strstr(magnet, "&tr=");
+
         if (tr) {
             tr += 4;
+
             size_t len = strcspn(tr, "&");
 
-            if (len >= tracker_url_size)
-                len = tracker_url_size - 1;
+            char encoded_tracker[512];
 
-            memcpy(tracker_url, tr, len);
-            tracker_url[len] = '\0';
-        }
-        else {
+            if (len >= sizeof(encoded_tracker))
+                len = sizeof(encoded_tracker) - 1;
+
+            memcpy(encoded_tracker, tr, len);
+            encoded_tracker[len] = '\0';
+
+            url_decode(tracker_url, encoded_tracker);
+        } else {
             tracker_url[0] = '\0';
         }
     }

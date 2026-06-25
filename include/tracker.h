@@ -52,4 +52,8 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
                            TrackerPeer **peers, int *peer_count);
 
 int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction, TrackerPeer **peers, int *peer_count);
+
+// Función auxiliar para imprimir IP
+void print_peer(const TrackerPeer *peer);
+
 #endif

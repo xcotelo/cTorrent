@@ -9,7 +9,8 @@ SRC = \
 	src/protocol/handshake.c \
 	src/protocol/protocol.c \
 	src/torrent/magnet.c \
-	src/peer/generate_peer_id.c
+	src/peer/generate_peer_id.c \
+	src/tracker/url_decode.c
 
 TARGET = compilation/rawtorrent
 

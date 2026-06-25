@@ -4,6 +4,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-int parse_magnet(const char *magnet, uint8_t info_hash[20], char *tracker_url, size_t tracker_url_size);
+int parse_magnet(const char *magnet, uint8_t info_hash[20], char *tracker_url);
 
 #endif
