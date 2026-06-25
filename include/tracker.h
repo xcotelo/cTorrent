@@ -4,6 +4,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <time.h>
 
 #define TRACKER_ANNOUNCE_SIZE 16  // Tamaño mínimo de ANNOUNCE
 #define PEER_PORT 6881
@@ -43,5 +51,5 @@ typedef struct {
 int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, const uint8_t *peer_id,
                            TrackerPeer **peers, int *peer_count);
 
-int parse_tracker_response(const uint8_t *response, size_t len, TrackerPeer **peers, int *peer_count);
+int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction, TrackerPeer **peers, int *peer_count);
 #endif

@@ -1,14 +1,7 @@
 #include "../../include/tracker.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <time.h>
 
-// Implementar htonll
+// Convertir números de 64 bits (unsigned long long) a 'network byte order' (O byte máis significativo vai ao principio)
+// Serve para enviar
 #ifndef htonll
 static inline uint64_t htonll(uint64_t value) {
     int num = 42;
@@ -21,6 +14,20 @@ static inline uint64_t htonll(uint64_t value) {
 }
 #endif
 
+// O mesmo ca o de arriba pero replícoo por semántica, para que sexa máis cómodo ler o código
+// Serve para recibir
+#ifndef ntohll
+static inline uint64_t ntohll(uint64_t value) {
+    int num = 42;
+    if (*(char *)&num == 42) {   // Little endian
+        uint32_t high = value >> 32;
+        uint32_t low = value & 0xFFFFFFFF;
+        return ((uint64_t)ntohl(low) << 32) | ntohl(high);
+    }
+    return value;
+}
+#endif
+
 // Función para conectar a tracker UDP
 int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr) {
     char host[256];
@@ -28,7 +35,8 @@ int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr
     
     // Parsear URL: tracker.com:6969 o tracker.com:6969/announce
     char url_copy[256];
-    strncpy(url_copy, tracker_url, sizeof(url_copy));
+    strncpy(url_copy, tracker_url, sizeof(url_copy) - 1);
+    url_copy[sizeof(url_copy) - 1] = '\0';
     
     // Quitar "udp://" se existe
     char *url = url_copy;
@@ -45,6 +53,7 @@ int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr
     
     *host_porto = '\0';
     strncpy(host, url, sizeof(host) - 1);
+    host[sizeof(host) - 1] = '\0';
     port = atoi(host_porto + 1);
     
     // Quitar /announce se o hai
@@ -72,22 +81,32 @@ int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr
 
 // Función para obter connection_id (handshake con tracker).
 // Isto está documentado en: https://www.bittorrent.org/beps/bep_0015.html
-// "Antes de anunciar, débese obter un connection_id."
+// "Antes de anunciar, débese obter un connection_id temporal"
 static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) {
     uint8_t connect_req[16];
     uint8_t connect_resp[16];
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
-    uint32_t action = htonl(0);
 
     //  1. Choose a random transaction ID
     //  2. Fill the connect request structure.
     memset(connect_req, 0, sizeof(connect_req));
-    uint64_t protocol_id = htonll(0x41727101980ULL);  // Magic constant
-    memcpy(connect_req, &protocol_id, 8);
-    memcpy(connect_req + 8, &action, 4);       // Action = connect
-    memcpy(connect_req + 12, &transaction_id_net, 4); // Transaction ID
-    
+
+    /* Protocol ID */
+    uint64_t protocol_id = htonll(0x41727101980ULL); // Numero identificativo para que o tracker saiba que falo UDP Tracker
+
+    /* Action = CONNECT */
+    uint32_t action = htonl(0);
+
+    /* Transaction ID */
+    uint32_t transaction_id = (uint32_t)rand();
+    uint32_t transaction_id_net = htonl(transaction_id);
+
+    memcpy(connect_req + 0,  &protocol_id,        8);
+    memcpy(connect_req + 8,  &action,             4);
+    memcpy(connect_req + 12, &transaction_id_net, 4);
+    // 8 + 4 + 4 = 16 bytes que xustamente é o tamaño do paquete CONNECT
+
     // 3. Send the packet.
     if (sendto(sockfd, connect_req, sizeof(connect_req), 0,  (struct sockaddr*)tracker_addr, 
     sizeof(*tracker_addr)) < 0) {
@@ -110,19 +129,32 @@ static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) 
         fprintf(stderr, "Error: Resposta de conexión de tamaño incorrecto (mínimo 16 bytes): %zd\n", recv_len);
         return 0;
     }
-    
+
     // 5. Check whether the transaction ID is equal to the one you chose.
-    uint32_t action = ntohl(*(uint32_t*)(connect_resp + 0));
-    uint32_t transaction = ntohl(*(uint32_t*)(connect_resp + 4));
-    
+    uint32_t response_action;
+    uint32_t response_transaction;
+    uint64_t connection_id;
+
+    memcpy(&response_action, connect_resp + 0, 4);
+    memcpy(&response_transaction, connect_resp + 4, 4);
+    memcpy(&connection_id, connect_resp + 8, 8);
+
+    response_action = ntohl(response_action);
+    response_transaction = ntohl(response_transaction);
+    connection_id = ntohll(connection_id);
+
     // 6. Check whether the action is connect.
-    if (action != 0) {
+    if (response_action != 0) {
         fprintf(stderr, "Error: Non está conectado. Action non é 0: %u\n", action);
         return 0;
     }
     
+    if (response_transaction != transaction_id) {
+        fprintf(stderr, "CONNECT transaction ID mismatch.\n");
+        return 0;
+    }
+
     // 7. Store the connection ID for future use.
-    uint64_t connection_id = *(uint64_t*)(connect_resp + 8);
     printf("Connection ID obtenido: %llu\n", (unsigned long long)connection_id);
     
     return connection_id;
@@ -163,14 +195,15 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
     AnnounceRequest req;
     memset(&req, 0, sizeof(req));
     
-    req.connection_id = connection_id;
+    uint32_t announce_transaction = (uint32_t)rand();
+    req.connection_id = htonll(connection_id);  // O protocolo UDP Tracker obriga a envialo en 'network byte order'
     req.action = htonl(1);  // 1= ANNOUNCE
-    req.transaction_id = htonl(rand()); // Aleatorio
+    req.transaction_id = htonl(announce_transaction); // Aleatorio
     memcpy(req.info_hash, info_hash, 20);
     memcpy(req.peer_id, peer_id, 20);
-    req.downloaded = 0;
+    req.downloaded = htonll(0);
     req.left = htonll(1000000000);  // 1GB (por ahora)
-    req.uploaded = 0;
+    req.uploaded = htonll(0);
     req.event = htonl(2);  // started
     req.ip = 0;
     req.key = htonl(rand());
@@ -201,7 +234,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
     }
     
     // 7. Parsear resposta
-    if (parse_tracker_response(response, recv_len, peers, peer_count) < 0) {
+    if (parse_tracker_response(response, recv_len, announce_transaction, peers, peer_count) < 0) {
         close(sockfd);
         return -1;
     }
@@ -211,7 +244,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
 }
 
 // Parsear respuesta do tracker
-int parse_tracker_response(const uint8_t *response, size_t len, 
+int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction,
                            TrackerPeer **peers, int *peer_count) {
     if (len < 20) {
         fprintf(stderr, "Error: Resposta demasiado curta\n");
@@ -219,8 +252,13 @@ int parse_tracker_response(const uint8_t *response, size_t len,
     }
     
     uint32_t action = ntohl(*(uint32_t*)(response + 0));
-    uint32_t transaction = ntohl(*(uint32_t*)(response + 4));
+    uint32_t transaction = ntohl(*(uint32_t *)(response + 4));
     
+    if (transaction != expected_transaction) {
+        fprintf(stderr, "Transaction ID mismatch.\n");
+        return -1;
+    }
+
     if (action == 3) {  // Error
         char error_msg[256];
         strncpy(error_msg, (char*)(response + 8), len - 8);
@@ -253,7 +291,7 @@ int parse_tracker_response(const uint8_t *response, size_t len,
         fprintf(stderr, "Datos de peers de tamaño incorrecto: %zu\n", peer_data_len);
     }
     
-    *peer_count = peer_data_len / 6;
+    *peer_count = peer_data_len / 6; // Número de peers que existen
     *peers = malloc((*peer_count) * sizeof(TrackerPeer));
     if (!*peers) {
         perror("malloc");
@@ -263,7 +301,7 @@ int parse_tracker_response(const uint8_t *response, size_t len,
     // Extraer información de cada peer 
     for (int i = 0; i < *peer_count; i++) {
         const uint8_t *p = peer_data + (i * 6); // Inicio peer
-        (*peers)[i].ip = *(uint32_t*)p;
+        memcpy(&(*peers)[i].ip, p, 4);
         (*peers)[i].port = ntohs(*(uint16_t*)(p + 4));
     }
     
@@ -274,5 +312,6 @@ int parse_tracker_response(const uint8_t *response, size_t len,
 void print_peer(const TrackerPeer *peer) {
     struct in_addr addr;
     addr.s_addr = peer->ip;
+    // Para convirtir a IP en notación ipv4
     printf("%s:%d", inet_ntoa(addr), peer->port);
 }
