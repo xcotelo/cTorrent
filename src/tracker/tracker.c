@@ -62,8 +62,9 @@ int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr
         *slash = '\0';
     }
     
-    printf("Conectando a tracker: %s:%d\n", host, port);
-    
+    printf("\n[*] Conectando ao tracker...\n");
+    printf("[+] Tracker: %s:%d\n", host, port); 
+
     // Resolver DNS
     struct hostent *server = gethostbyname(host);
     if (!server) {
@@ -114,8 +115,8 @@ static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) 
         return 0;
     }
     
-    printf("Enviada solicitude de conexión ao tracker\n");
-    
+    //printf("[+] CONNECT enviado\n");
+
     // 3. Receive the packet.
     ssize_t recv_len = recvfrom(sockfd, connect_resp, sizeof(connect_resp), 0,
                                 (struct sockaddr*)&from_addr, &from_len);
@@ -155,8 +156,7 @@ static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) 
     }
 
     // 7. Store the connection ID for future use.
-    printf("Connection ID obtenido: %llu\n", (unsigned long long)connection_id);
-    
+    printf("[+] Connection ID: %llu\n", (unsigned long long)connection_id);    
     return connection_id;
 }
 
@@ -218,8 +218,8 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
         return -1;
     }
     
-    printf("ANNOUNCE enviado ao tracker\n");
-    
+    //printf("[+] ANNOUNCE enviado\n");
+
     // 6. Recibir resposta
     uint8_t response[2048];
     struct sockaddr_in from_addr;
@@ -278,9 +278,9 @@ int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expecte
     uint32_t leechers = ntohl(*(uint32_t*)(response + 12));
     uint32_t seeders = ntohl(*(uint32_t*)(response + 16));
     
-    printf("Intervalo: %u segundos\n", interval);
-    printf("Leechers: %u\n", leechers);
-    printf("Seeders: %u\n", seeders);
+    printf("[+] Intervalo: %u segundos\n", interval);
+    printf("[+] Leechers: %u\n", leechers);
+    printf("[+] Seeders: %u\n", seeders);
     
     // Os peers empezan en byte 20
     const uint8_t *peer_data = response + 20;

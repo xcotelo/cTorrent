@@ -1,12 +1,12 @@
 #include "../include/tracker.h"
 #include "../include/generate_peer_id.h"
-#include "../include/tracker.h"
 #include "../include/peer.h"
 #include "../include/magnet.h"
-#include "../include/url_decode.h"
+#include "../include/banner.h"
 
 int main(int argc, char *argv[])
 {
+    print_banner();
     uint8_t info_hash[20];
     uint8_t peer_id[20];
     char tracker_url[512];
@@ -37,20 +37,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    printf("/nPeers encontrados: %d\n", peer_count);
+    printf("\n");
+    printf("=============================================================\n");
+    printf(" Peers atopados : %d\n", peer_count);
+    printf("=============================================================\n\n");
+
 
     for (int i = 0; i < peer_count; i++) {
-        printf("[+] %d -> ", i);
+        printf(CYAN "[%03d] " RESET, i);
         print_peer(&peers[i]);
         printf("\n");
     }
     
     int sockfd = connect_to_peer(&peers[0], info_hash, peer_id);
-
-    if (sockfd < 0) {
-        fprintf(stderr, "Error ao conectarse ao peer.\n");
-    }
-
+    
+    close(sockfd);
     free(peers);
 
     return 0;
