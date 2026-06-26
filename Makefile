@@ -12,7 +12,7 @@ SRC = \
 	src/peer/generate_peer_id.c \
 	src/tracker/url_decode.c
 
-TARGET = compilation/rawtorrent
+TARGET = compilation/ctorrent
 
 all: compilation_dir $(TARGET)
 
