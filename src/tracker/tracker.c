@@ -117,6 +117,12 @@ static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) 
     
     //printf("[+] CONNECT enviado\n");
 
+    // Timeout para esperar a resposta ao ANNOUNCE
+    struct timeval timeout;
+    timeout.tv_sec = 10;
+    timeout.tv_usec = 0;
+
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     // 3. Receive the packet.
     ssize_t recv_len = recvfrom(sockfd, connect_resp, sizeof(connect_resp), 0,
                                 (struct sockaddr*)&from_addr, &from_len);
@@ -244,7 +250,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
 }
 
 // Parsear respuesta do tracker
-int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction,
+    int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction,
                            TrackerPeer **peers, int *peer_count) {
     if (len < 20) {
         fprintf(stderr, "Error: Resposta demasiado curta\n");

@@ -1,6 +1,8 @@
 #include "../../include/peer.h"
 #include "../../include/handshake.h"
 #include <sys/time.h> // Para o timeout
+#include <errno.h>
+#include <fcntl.h>
 
 int connect_to_peer(TrackerPeer *peer, const uint8_t *info_hash, const uint8_t *peer_id){
     int sockfd;
@@ -11,8 +13,8 @@ int connect_to_peer(TrackerPeer *peer, const uint8_t *info_hash, const uint8_t *
 
     build_handshake(&envio, info_hash, peer_id);
 
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        close(sockfd);
         perror("socket");
         return -1;
     }
@@ -31,14 +33,24 @@ int connect_to_peer(TrackerPeer *peer, const uint8_t *info_hash, const uint8_t *
     setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     
     if (connect(sockfd, (struct sockaddr *)&peer_addr, sizeof(peer_addr)) < 0) {
-        perror("connect");
         close(sockfd);
         return -1;
-    }    
+    }
 
-    send_handshake(sockfd, &envio);
-    recv_handshake(sockfd, &resposta);
-    validate_handshake(&resposta, info_hash);
+    if (send_handshake(sockfd, &envio) < 0) {
+        close(sockfd);
+        return -1;
+    }
+
+    if (recv_handshake(sockfd, &resposta) < 0) {
+        close(sockfd);
+        return -1;
+    }
+
+    if (!validate_handshake(&resposta, info_hash)) {
+        close(sockfd);
+        return -1;
+    }
 
     return sockfd;
 }

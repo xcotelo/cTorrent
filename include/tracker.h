@@ -12,6 +12,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define TRACKER_ANNOUNCE_SIZE 16  // Tamaño mínimo de ANNOUNCE
 #define PEER_PORT 6881
@@ -23,7 +24,8 @@ typedef struct {
 } TrackerPeer;
 
 // Estructura UDP (según BEP 15: https://www.bittorrent.org/beps/bep_0015.html)
-typedef struct {
+// Necesario meter '__attribute__((packed))' xa que GCC pode meter padding entre os campos
+typedef struct __attribute__((packed)) {
     uint64_t connection_id;   // 8 bytes
     uint32_t action;          // 0 = connect, 1 = announce
     uint32_t transaction_id;  // 4 bytes

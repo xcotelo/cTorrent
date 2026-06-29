@@ -48,10 +48,24 @@ int main(int argc, char *argv[])
         print_peer(&peers[i]);
         printf("\n");
     }
-    
-    int sockfd = connect_to_peer(&peers[0], info_hash, peer_id);
-    
-    close(sockfd);
+
+    int sock = -1;
+    for (int i = 0; i < peer_count; i++) {
+
+        printf("[*] Probando peer " CYAN "%03d" RESET " (%d/%d)... ",
+            i, i + 1, peer_count);
+        fflush(stdout);
+
+        int sock = connect_to_peer(&peers[i], info_hash, peer_id);
+        if (sock >= 0) {
+            printf(GREEN "OK" RESET "\n");
+            close(sock);
+        }else{
+            printf(RED "FALLO" RESET "\n");
+        }
+    }
+
+    close(sock);
     free(peers);
 
     return 0;
