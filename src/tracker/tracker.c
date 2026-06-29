@@ -62,7 +62,7 @@ int connect_to_tracker(const char *tracker_url, struct sockaddr_in *tracker_addr
         *slash = '\0';
     }
     
-    printf("\n[*] Conectando ao tracker...\n");
+    printf("\n[*] Connecting to tracker...\n");
     printf("[+] Tracker: %s:%d\n", host, port); 
 
     // Resolver DNS
@@ -108,26 +108,54 @@ static uint64_t get_connection_id(int sockfd, struct sockaddr_in *tracker_addr) 
     memcpy(connect_req + 12, &transaction_id_net, 4);
     // 8 + 4 + 4 = 16 bytes que xustamente é o tamaño do paquete CONNECT
 
-    // 3. Send the packet.
-    if (sendto(sockfd, connect_req, sizeof(connect_req), 0,  (struct sockaddr*)tracker_addr, 
-    sizeof(*tracker_addr)) < 0) {
-        perror("sendto connect");
+    // 3. Send the packet. (con reitentos)
+    ssize_t recv_len = -1;
+    int timeout = 15;
+
+    for (int intento = 0; intento < 5; intento++) {
+
+        struct timeval tv;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+
+        setsockopt(sockfd, SOL_SOCKET,
+                SO_RCVTIMEO,
+                &tv,
+                sizeof(tv));
+
+        if (sendto(sockfd,
+                connect_req,
+                sizeof(connect_req),
+                0,
+                (struct sockaddr *)tracker_addr,
+                sizeof(*tracker_addr)) < 0) {
+            perror("sendto connect");
+            return 0;
+        }
+
+        recv_len = recvfrom(sockfd,
+                            connect_resp,
+                            sizeof(connect_resp),
+                            0,
+                            (struct sockaddr *)&from_addr,
+                            &from_len);
+
+        if (recv_len >= 0) {
+            break;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            printf("[*] Timeout. Retrying CONNECT (%d)...\n", timeout);
+            timeout *= 2;
+            continue;
+        }
+
+        perror("recvfrom connect");
         return 0;
     }
-    
-    //printf("[+] CONNECT enviado\n");
 
-    // Timeout para esperar a resposta ao ANNOUNCE
-    struct timeval timeout;
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
-
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    // 3. Receive the packet.
-    ssize_t recv_len = recvfrom(sockfd, connect_resp, sizeof(connect_resp), 0,
-                                (struct sockaddr*)&from_addr, &from_len);
     if (recv_len < 0) {
-        perror("recvfrom connect");
+        fprintf(stderr, "CONNECT fallou tras 5 intentos\n");
         return 0;
     }
     
@@ -216,25 +244,49 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
     req.num_want = htonl(-1);
     req.port = htons(PEER_PORT);
     
-    // 5. Enviar announce
-    if (sendto(sockfd, &req, sizeof(req), 0, 
-               (struct sockaddr*)&tracker_addr, sizeof(tracker_addr)) < 0) {
-        perror("sendto announce");
-        close(sockfd);
-        return -1;
-    }
-    
-    //printf("[+] ANNOUNCE enviado\n");
-
-    // 6. Recibir resposta
+    // 5. Enviar ANNOUNCE con reintentos
     uint8_t response[2048];
     struct sockaddr_in from_addr;
     socklen_t from_len = sizeof(from_addr);
-    
-    ssize_t recv_len = recvfrom(sockfd, response, sizeof(response), 0, 
-    (struct sockaddr*)&from_addr, &from_len);
+
+    int timeout = 15;   // BEP-15: empezar con 15 segundos
+    int recv_len = -1;
+
+    for (int intento = 0; intento < 8; intento++) {
+
+        struct timeval tv;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
+
+        setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        if (sendto(sockfd, &req, sizeof(req), 0,
+                (struct sockaddr *)&tracker_addr,
+                sizeof(tracker_addr)) < 0) {
+            perror("sendto announce");
+            close(sockfd);
+            return -1;
+        }
+
+        recv_len = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&from_addr, &from_len);
+
+        if (recv_len >= 0) {
+            break;          // resposta recibida
+        }
+
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            perror("recvfrom announce");
+            close(sockfd);
+            return -1;
+        }
+
+        printf("[*] Timeout. Retrying ANNOUNCE (%d)...\n", intento + 1);
+
+        timeout *= 2;       // 15 -> 30 -> 60 -> 120 -> ...
+    }
+
     if (recv_len < 0) {
-        perror("recvfrom announce");
+        fprintf(stderr, "Error Tracker.\n");
         close(sockfd);
         return -1;
     }
@@ -253,7 +305,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
     int parse_tracker_response(const uint8_t *response, size_t len, uint32_t expected_transaction,
                            TrackerPeer **peers, int *peer_count) {
     if (len < 20) {
-        fprintf(stderr, "Error: Resposta demasiado curta\n");
+        fprintf(stderr, "Error: short message\n");
         return -1;
     }
     
@@ -269,13 +321,13 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
         char error_msg[256];
         strncpy(error_msg, (char*)(response + 8), len - 8);
         error_msg[len - 8] = '\0';
-        fprintf(stderr, "Error do tracker: %s\n", error_msg);
+        fprintf(stderr, "Tracker error: %s\n", error_msg);
         return -1;
     }
     
     // Non pode ser ANNOUNCE
     if (action != 1) { 
-        fprintf(stderr, "Error: Action incorrecto: %u\n", action);
+        fprintf(stderr, "Error: Invalid Action: %u\n", action);
         return -1;
     }
     
@@ -284,7 +336,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
     uint32_t leechers = ntohl(*(uint32_t*)(response + 12));
     uint32_t seeders = ntohl(*(uint32_t*)(response + 16));
     
-    printf("[+] Intervalo: %u segundos\n", interval);
+    printf("[+] Announce interval: %u seconds\n", interval);
     printf("[+] Leechers: %u\n", leechers);
     printf("[+] Seeders: %u\n", seeders);
     
@@ -294,7 +346,7 @@ int get_peers_from_tracker(const char *tracker_url, const uint8_t *info_hash, co
 
     // Os peers ocupan EXACTAMENTE 6 bytes na resposta (4 IP + 2 PORTO)
     if (peer_data_len % 6 != 0) {
-        fprintf(stderr, "Datos de peers de tamaño incorrecto: %zu\n", peer_data_len);
+        fprintf(stderr, "Peer's data size invalid: %zu\n", peer_data_len);
     }
     
     *peer_count = peer_data_len / 6; // Número de peers que existen

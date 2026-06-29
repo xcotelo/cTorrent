@@ -186,18 +186,13 @@ Características
 
 ---
 
-### Peer Discovery
+## Peer Discovery
 
-Una vez recibido el announce response:
+Una vez procesado el **Magnet Link**, el cliente establece comunicación con un tracker UDP compatible con **BEP-15** para solicitar la lista de participantes (*swarm*) asociada al `info_hash`.
 
-```text
-Tracker
-    │
-    ▼
-Peer List
-```
+Tras completar correctamente el intercambio **CONNECT** y **ANNOUNCE**, el tracker devuelve una **Compact Peer List**, donde cada entrada está formada por una dirección IPv4 y un puerto TCP.
 
-Cada peer se almacena mediante:
+Cada peer recibido se almacena internamente mediante la siguiente estructura:
 
 ```c
 typedef struct {
@@ -206,11 +201,71 @@ typedef struct {
 } TrackerPeer;
 ```
 
+Durante esta fase el cliente:
+
+* Resuelve el nombre DNS del tracker.
+* Implementa manualmente el protocolo **UDP Tracker (BEP-15)**.
+* Gestiona `connection_id` temporales.
+* Implementa reintentos con *exponential backoff* ante pérdidas de paquetes UDP.
+* Analiza la respuesta compacta enviada por el tracker.
+* Construye una lista indexada de todos los peers anunciados.
+
+Ejemplo de salida:
+
+```text
+=============================================================
+ Peers encontrados : 137
+=============================================================
+
+[000] 1.242.244.122:64989
+[001] 27.89.30.189:17883
+[002] 49.66.154.112:20073
+...
+[136] 5.180.208.204:8412
+```
+
+Esta fase representa el proceso inicial de descubrimiento de nodos dentro de la red BitTorrent y constituye el punto de partida para el establecimiento de conexiones TCP con otros participantes del *swarm*.
+
 ---
 
-### BitTorrent Handshake
+## Verificación de peers
 
-Implementación del handshake oficial de BitTorrent:
+Una vez obtenida la lista de peers proporcionada por el tracker, **cTorrent** intenta establecer una conexión TCP con cada uno de ellos de forma independiente.
+
+El objetivo de esta etapa es determinar qué peers se encuentran realmente accesibles en el momento de la ejecución. Aunque un tracker anuncie cientos de direcciones, no todas corresponden necesariamente a clientes activos o alcanzables: algunos peers pueden haberse desconectado, estar protegidos por NAT o firewall, o simplemente no responder dentro del tiempo establecido.
+
+Para cada peer el cliente:
+
+* Abre una conexión TCP.
+* Establece un tiempo máximo de espera (*connection timeout*).
+* Verifica que el socket alcance el estado **CONNECTED**.
+* Registra el resultado de la operación.
+
+La salida indica, para cada peer descubierto, si la conexión pudo establecerse correctamente:
+
+```text
+[*] Probando peers...
+
+[*] [001] 27.89.30.189:17883 ........ OK
+[*] [002] 49.66.154.112:20073 ........ OK
+[*] [006] 81.39.90.190:6881 ........ FAIL
+[*] [020] 146.70.182.5:47434 ........ OK
+...
+```
+
+Los peers marcados como **OK** representan candidatos válidos para iniciar el protocolo **Peer Wire**, mientras que aquellos marcados como **FAIL** son descartados por no aceptar conexiones o no responder dentro del tiempo límite.
+
+Esta comprobación permite filtrar la lista anunciada por el tracker y conservar únicamente los nodos potencialmente utilizables para las siguientes fases del cliente.
+
+---
+
+## BitTorrent Handshake
+
+Tras identificar un peer accesible mediante una conexión TCP satisfactoria, el cliente inicia el **BitTorrent Handshake**, primer intercambio obligatorio definido por el protocolo **Peer Wire**.
+
+El *handshake* permite verificar que ambos extremos pertenecen al mismo *swarm* y negocian el mismo protocolo antes de intercambiar cualquier otra información.
+
+El mensaje tiene un tamaño fijo de **68 bytes** y contiene la siguiente estructura:
 
 ```text
 <pstrlen>
@@ -220,19 +275,12 @@ Implementación del handshake oficial de BitTorrent:
 <peer_id>
 ```
 
-Tamaño total:
+Durante esta fase el cliente verifica:
 
-```text
-68 bytes
-```
-
-Permite verificar:
-
-* Compatibilidad del protocolo
-* Coincidencia del info_hash
-* Identificación de peers
-
----
+* Que el peer implementa el protocolo BitTorrent.
+* Que el `info_hash` coincide con el torrent solicitado.
+* La identidad (`peer_id`) del nodo remoto.
+* Que la conexión puede utilizarse para el intercambio posterior de mensajes del protocolo **Peer Wire**.
 
 ### Peer ID Generation
 

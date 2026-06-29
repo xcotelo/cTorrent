@@ -10,6 +10,7 @@ SRC = \
 	src/protocol/protocol.c \
 	src/torrent/magnet.c \
 	src/peer/generate_peer_id.c \
+	src/peer/worker.c \
 	src/tracker/url_decode.c
 
 TARGET = compilation/ctorrent

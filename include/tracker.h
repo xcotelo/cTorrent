@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <sys/time.h>
+#include <errno.h>
 
 #define TRACKER_ANNOUNCE_SIZE 16  // Tamaño mínimo de ANNOUNCE
 #define PEER_PORT 6881
