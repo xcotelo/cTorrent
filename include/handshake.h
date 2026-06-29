@@ -36,7 +36,7 @@ typedef struct {
     uint8_t reserved[8];
     uint8_t info_hash[20];
     uint8_t peer_id[20];
-} Handshake;
+} __attribute__((packed)) Handshake; // Para evitar padding por parte de GCC
 
 void build_handshake(Handshake *hs, const uint8_t *info_hash, const uint8_t *peer_id);
 
